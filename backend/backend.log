@@ -1,0 +1,5 @@
+
+> pixel-down-backend@1.0.0 dev
+> tsx watch server.ts
+
+🎮 Pixel Down server running on http://localhost:3001
