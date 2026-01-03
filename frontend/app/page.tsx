@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { supabase } from '@/lib/supabase';
+import { checkBackendWithRetry } from '@/lib/backendHealth';
 
 export default function Home() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function Home() {
   const [username, setUsername] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   useEffect(() => {
     setIsMounted(true);
@@ -26,6 +28,15 @@ export default function Home() {
         setUsername(session.user.user_metadata?.username || 'Player');
       }
     });
+
+    // Check backend health
+    const checkBackend = async () => {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const isOnline = await checkBackendWithRetry(backendUrl);
+      setBackendStatus(isOnline ? 'online' : 'offline');
+    };
+
+    checkBackend();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -59,6 +70,11 @@ export default function Home() {
     router.push(`/game/${newGameId}`);
   };
 
+  // Start offline mode
+  const handleOfflineMode = () => {
+    router.push('/game/offline');
+  };
+
   // Redirect to a specific game ID if user has one
   const handleJoinGame = () => {
     if (gameId.trim()) {
@@ -69,7 +85,8 @@ export default function Home() {
   // Join a random game that has less than 4 players
   const handleJoinRandomGame = () => {
     setIsLoading(true);
-    const socket = io('http://localhost:3001', {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    const socket = io(backendUrl, {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
@@ -173,56 +190,107 @@ export default function Home() {
 
           {/* Right Column - CTA */}
           <div className="flex flex-col justify-center">
+            {/* Backend Status Alert */}
+            {backendStatus === 'offline' && (
+              <div className="mb-6 bg-yellow-900/30 border border-yellow-600 rounded-lg p-4 text-yellow-300">
+                <div className="font-bold mb-1">Backend Offline</div>
+                <p className="text-sm mb-3">The server is currently unavailable. Play in offline mode against bots instead!</p>
+              </div>
+            )}
+
+            {backendStatus === 'checking' && (
+              <div className="mb-6 bg-blue-900/30 border border-blue-600 rounded-lg p-4 text-blue-300">
+                <div className="font-bold mb-1">Checking Server...</div>
+                <p className="text-sm">Connecting to backend...</p>
+              </div>
+            )}
+
             <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-lg p-8 space-y-6">
               <div>
                 <h3 className="text-2xl font-bold mb-2">Ready to Fight?</h3>
                 <p className="text-gray-400">
-                  Jump into the arena and battle other players. Survive, gain kills, and dominate the leaderboard!
+                  {backendStatus === 'online'
+                    ? 'Jump into the arena and battle other players. Survive, gain kills, and dominate the leaderboard!'
+                    : 'Battle AI bots in offline mode or wait for the server to come back online.'}
                 </p>
               </div>
 
               <div className="space-y-4">
-                <button
-                  onClick={handleCreateNewGame}
-                  className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold py-3 px-8 rounded-lg text-center transition-all hover:shadow-lg hover:shadow-blue-500/50"
-                >
-                  CREATE NEW GAME →
-                </button>
+                {backendStatus === 'online' ? (
+                  <>
+                    <button
+                      onClick={handleCreateNewGame}
+                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold py-3 px-8 rounded-lg text-center transition-all hover:shadow-lg hover:shadow-blue-500/50"
+                    >
+                      CREATE NEW GAME →
+                    </button>
 
-                <button
-                  onClick={handleJoinRandomGame}
-                  disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg text-center transition-all hover:shadow-lg hover:shadow-green-500/50"
-                >
-                  {isLoading ? 'FINDING GAME...' : 'JOIN RANDOM GAME 🎲'}
-                </button>
+                    <button
+                      onClick={handleJoinRandomGame}
+                      disabled={isLoading}
+                      className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg text-center transition-all hover:shadow-lg hover:shadow-green-500/50"
+                    >
+                      {isLoading ? 'FINDING GAME...' : 'JOIN RANDOM GAME 🎲'}
+                    </button>
 
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-600"></div>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-600"></div>
+                      </div>
+                      <div className="relative flex justify-center text-sm">
+                        <span className="px-2 bg-gradient-to-br from-gray-800 to-gray-900 text-gray-400">or join with ID</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter Game ID..."
+                        value={gameId}
+                        onChange={(e) => setGameId(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleJoinGame()}
+                        className="flex-1 bg-gray-800 border border-gray-700 rounded px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+                      />
+                      <button
+                        onClick={handleJoinGame}
+                        disabled={!gameId.trim()}
+                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-6 rounded-lg transition"
+                      >
+                        JOIN
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleOfflineMode}
+                      className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-bold py-3 px-8 rounded-lg text-center transition-all hover:shadow-lg hover:shadow-red-500/50"
+                    >
+                      PLAY OFFLINE 
+                    </button>
+                    <p className="text-center text-gray-400 text-sm">Battle bots in single-player mode</p>
+                  </>
+                )}
+
+                {backendStatus === 'online' && (
+                  <div className="relative pt-2">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-600"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-gradient-to-br from-gray-800 to-gray-900 text-gray-400">or try offline</span>
+                    </div>
                   </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-gradient-to-br from-gray-800 to-gray-900 text-gray-400">or join with ID</span>
-                  </div>
-                </div>
+                )}
 
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter Game ID..."
-                    value={gameId}
-                    onChange={(e) => setGameId(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleJoinGame()}
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-                  />
+                {backendStatus === 'online' && (
                   <button
-                    onClick={handleJoinGame}
-                    disabled={!gameId.trim()}
-                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-6 rounded-lg transition"
+                    onClick={handleOfflineMode}
+                    className="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-8 rounded-lg text-center transition"
                   >
-                    JOIN
+                    OFFLINE MODE
                   </button>
-                </div>
+                )}
               </div>
 
               <div className="bg-gray-900 border border-gray-700 rounded p-4 text-sm text-gray-300 space-y-2">
