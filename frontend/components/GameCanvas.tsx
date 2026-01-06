@@ -345,8 +345,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.fillStyle = '#1a1a1a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw grid
-      drawGrid(ctx, canvas.width, canvas.height);
+      // Get current player for camera centering
+      const currentPlayer = state.players.find(p => p.id === playerId);
+      
+      // Save canvas state for camera transform
+      ctx.save();
+      
+      // Apply camera transform (center on current player)
+      if (currentPlayer) {
+        const cameraX = canvas.width / 2 - currentPlayer.x;
+        const cameraY = canvas.height / 2 - currentPlayer.y;
+        ctx.translate(cameraX, cameraY);
+      }
+
+      // Draw grid (in world coordinates)
+      drawGrid(ctx, arenaWidth, arenaHeight);
 
       // Draw obstacles
       drawObstacles(ctx, state.obstacles);
@@ -372,7 +385,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // Draw aiming line
-      const currentPlayer = state.players.find(p => p.id === playerId);
       if (currentPlayer && currentPlayer.isAlive) {
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
         ctx.lineWidth = 2;
@@ -386,20 +398,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Apply fog of war only for current player
       if (currentPlayer) {
-        drawFogOfWar(ctx, currentPlayer.x, currentPlayer.y, visionRadius, canvas.width, canvas.height);
+        drawFogOfWar(ctx, currentPlayer.x, currentPlayer.y, visionRadius, arenaWidth, arenaHeight);
       }
+
+      // Restore canvas state (undo camera transform)
+      ctx.restore();
 
       requestAnimationFrame(render);
     };
 
     render();
-  }, [playerId, visionRadius]);
+  }, [playerId, visionRadius, arenaWidth, arenaHeight]);
 
   return (
     <canvas
       ref={canvasRef}
-      width={arenaWidth}
-      height={arenaHeight}
+      width={1600}
+      height={900}
       style={{
         display: 'block',
         border: '2px solid #4b5563',

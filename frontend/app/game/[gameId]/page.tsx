@@ -99,6 +99,11 @@ export default function GamePage() {
    * Initialize Socket.IO connection and join game
    */
   useEffect(() => {
+    // Wait for authentication before connecting
+    if (!authenticatedUsername) {
+      return;
+    }
+
     const socket = io('http://localhost:3001', {
       reconnection: true,
       reconnectionDelay: 1000,
@@ -109,7 +114,7 @@ export default function GamePage() {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('✅ Connected to server');
+      console.log('✅ Connected to server, socket.id:', socket.id);
       setIsConnected(true);
       setError('');
       setPlayerId(socket.id || '');
@@ -118,6 +123,7 @@ export default function GamePage() {
       supabase.auth.getSession().then(({ data: { session } }) => {
         const userId = session?.user?.id;
         
+        console.log('🎮 Joining game:', gameId, 'username:', authenticatedUsername, 'userId:', userId);
         // Join game with gameId, username, and userId
         socket.emit('joinGame', { 
           gameId, 
@@ -182,6 +188,7 @@ export default function GamePage() {
     });
 
     socket.on('gameState', (state) => {
+      console.log('🎮 gameState received, players:', state.players?.length || 0);
       setPlayers(state.players);
       setProjectiles(state.projectiles);
       setLeaderboard(state.leaderboard);
@@ -280,13 +287,55 @@ export default function GamePage() {
   }, [nearbyShop, shopMenuOpen]);
 
   /**
-   * Handle mouse position
+   * Handle mouse position - convert screen to world coordinates
    */
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    setMouseX(e.clientX - rect.left);
-    setMouseY(e.clientY - rect.top);
-  }, []);
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    // Canvas internal resolution
+    const canvasWidth = 1600;
+    const canvasHeight = 900;
+    
+    // Calculate the actual rendered canvas size (objectFit: contain)
+    const containerWidth = rect.width;
+    const containerHeight = rect.height;
+    const containerAspect = containerWidth / containerHeight;
+    const canvasAspect = canvasWidth / canvasHeight;
+    
+    let renderWidth, renderHeight, offsetX, offsetY;
+    if (containerAspect > canvasAspect) {
+      // Container is wider, canvas is height-constrained
+      renderHeight = containerHeight;
+      renderWidth = containerHeight * canvasAspect;
+      offsetX = (containerWidth - renderWidth) / 2;
+      offsetY = 0;
+    } else {
+      // Container is taller, canvas is width-constrained
+      renderWidth = containerWidth;
+      renderHeight = containerWidth / canvasAspect;
+      offsetX = 0;
+      offsetY = (containerHeight - renderHeight) / 2;
+    }
+    
+    // Convert screen position to canvas-relative position
+    const canvasX = ((screenX - offsetX) / renderWidth) * canvasWidth;
+    const canvasY = ((screenY - offsetY) / renderHeight) * canvasHeight;
+    
+    // Convert canvas coordinates to world coordinates
+    const currentPlayer = players.find((p) => p.id === playerId);
+    
+    if (currentPlayer) {
+      const worldX = currentPlayer.x + (canvasX - canvasWidth / 2);
+      const worldY = currentPlayer.y + (canvasY - canvasHeight / 2);
+      setMouseX(worldX);
+      setMouseY(worldY);
+    } else {
+      setMouseX(canvasX);
+      setMouseY(canvasY);
+    }
+  }, [players, playerId]);
 
   /**
    * Handle mouse click to shoot
@@ -299,12 +348,43 @@ export default function GamePage() {
       if (!currentPlayer || !currentPlayer.isAlive) return;
 
       const rect = e.currentTarget.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
+      const screenClickX = e.clientX - rect.left;
+      const screenClickY = e.clientY - rect.top;
+
+      // Canvas internal resolution
+      const canvasWidth = 1600;
+      const canvasHeight = 900;
+      
+      // Calculate the actual rendered canvas size (objectFit: contain)
+      const containerWidth = rect.width;
+      const containerHeight = rect.height;
+      const containerAspect = containerWidth / containerHeight;
+      const canvasAspect = canvasWidth / canvasHeight;
+      
+      let renderWidth, renderHeight, offsetX, offsetY;
+      if (containerAspect > canvasAspect) {
+        renderHeight = containerHeight;
+        renderWidth = containerHeight * canvasAspect;
+        offsetX = (containerWidth - renderWidth) / 2;
+        offsetY = 0;
+      } else {
+        renderWidth = containerWidth;
+        renderHeight = containerWidth / canvasAspect;
+        offsetX = 0;
+        offsetY = (containerHeight - renderHeight) / 2;
+      }
+      
+      // Convert screen position to canvas-relative position
+      const canvasClickX = ((screenClickX - offsetX) / renderWidth) * canvasWidth;
+      const canvasClickY = ((screenClickY - offsetY) / renderHeight) * canvasHeight;
+      
+      // Convert canvas to world coordinates
+      const worldClickX = currentPlayer.x + (canvasClickX - canvasWidth / 2);
+      const worldClickY = currentPlayer.y + (canvasClickY - canvasHeight / 2);
 
       // Calculate angle from player to mouse
-      const dx = clickX - currentPlayer.x;
-      const dy = clickY - currentPlayer.y;
+      const dx = worldClickX - currentPlayer.x;
+      const dy = worldClickY - currentPlayer.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       // Check if click is within vision radius
@@ -463,7 +543,7 @@ export default function GamePage() {
           <div
             className="flex-1 bg-gray-900 rounded-lg overflow-hidden shadow-2xl border border-gray-700 relative"
             style={{
-              minWidth: '1000px',
+              minHeight: '600px',
             }}
             onMouseMove={handleMouseMove}
             onClick={handleMouseClick}

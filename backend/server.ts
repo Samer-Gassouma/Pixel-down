@@ -13,29 +13,26 @@ const io = new Server(httpServer, {
   },
 });
 
-// Enable CORS for express
 app.use(cors());
 
-// Initialize Supabase client (using anon key, same as frontend)
 const supabaseUrl = process.env.SUPABASE_URL || 'https://fnfamiooskpvtqjasqga.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZuZmFtaW9vc2twdnRxamFzcWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyNzI1MTIsImV4cCI6MjA4Mjg0ODUxMn0.I1Ygm5v6hD0M0TvHAdt9t8YKIEDg7kAXrTc8P35nzZc';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Types and Constants
 const ARENA_WIDTH = 2400;
 const ARENA_HEIGHT = 1600;
 const PLAYER_SIZE = 14;
 const MAX_HEALTH = 100;
 const MAX_MANA = 100;
-const MANA_REGEN_RATE = 20; // per second
+const MANA_REGEN_RATE = 20;
 const MANA_COST_PER_SHOT = 25;
 const PROJECTILE_SPEED = 520;
-const FIRE_COOLDOWN = 180; // milliseconds between shots
-const RESPAWN_TIME = 60000; // 60 seconds
+const FIRE_COOLDOWN = 180;
+const RESPAWN_TIME = 60000;
 const BASE_DAMAGE = 10;
-const MATCH_DURATION = 600000; // 10 minutes in milliseconds
-const MAP_CHANGE_INTERVAL = 120000; // 2 minutes in milliseconds
-const POST_MATCH_DELAY = 30000; // 30 seconds before creating new game
+const MATCH_DURATION = 600000;
+const MAP_CHANGE_INTERVAL = 120000;
+const POST_MATCH_DELAY = 30000;
 
 // Game ID management
 let currentGameId = generateGameId();
@@ -44,16 +41,15 @@ function generateGameId(): string {
   return Math.random().toString(36).substring(2, 11);
 }
 
-// Shop buffs configuration
 const BUFFS = {
   speed: { duration: 15000, multiplier: 1.5, price: 50 },
   mana: { duration: 20000, multiplier: 2, price: 75 },
   power: { duration: 15000, multiplier: 2, price: 100 },
-  shield: { duration: 10000, value: 25, price: 60 }, // Adds 25% max health
+  shield: { duration: 10000, value: 25, price: 60 },
 };
 
 const SHOP_RADIUS = 80;
-const COIN_DROP_DURATION = 30000; // Coins last 30 seconds
+const COIN_DROP_DURATION = 30000;
 
 interface Vec2 {
   x: number;
@@ -62,7 +58,7 @@ interface Vec2 {
 
 interface Player {
   id: string;
-  userId?: string; // Supabase user ID
+  userId?: string;
   name: string;
   x: number;
   y: number;
@@ -136,7 +132,6 @@ interface GameState {
   projectileCounter: number;
 }
 
-// Multiple games management
 const games = new Map<string, GameState>();
 
 function createNewGame(gameId: string): GameState {
@@ -158,7 +153,6 @@ function createNewGame(gameId: string): GameState {
   };
 }
 
-// Game state (deprecated, will be removed)
 let gameState: GameState = {
   players: new Map(),
   projectiles: new Map(),
@@ -179,7 +173,6 @@ let lastMapChangeTime = Date.now();
 let matchEnded = false;
 let postMatchTimeout: NodeJS.Timeout | null = null;
 
-// Utility functions
 function generateColor(): string {
   const colors = [
     "#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A",
@@ -198,7 +191,6 @@ function generateRandomName(): string {
 
 function generateArenaObstacles(): Obstacle[] {
   const obstacles: Obstacle[] = [];
-  // Create 12 obstacles with random positions and smaller sizes
   const numObstacles = 12;
   
   for (let i = 0; i < numObstacles; i++) {
@@ -206,8 +198,8 @@ function generateArenaObstacles(): Obstacle[] {
     let obstacle: Obstacle | null = null;
     
     while (!validPosition) {
-      const width = 40 + Math.random() * 60;   // 40-100px width (smaller)
-      const height = 30 + Math.random() * 50;  // 30-80px height (smaller)
+      const width = 40 + Math.random() * 60;
+      const height = 30 + Math.random() * 50;
       const margin = 200;
       
       const x = Math.random() * (ARENA_WIDTH - width - margin * 2) + margin;
@@ -215,7 +207,6 @@ function generateArenaObstacles(): Obstacle[] {
       
       obstacle = { x, y, width, height };
       
-      // Check if too close to other obstacles
       let tooClose = false;
       for (const other of obstacles) {
         const dx = (x + width / 2) - (other.x + other.width / 2);
@@ -244,7 +235,7 @@ function generateArenaObstacles(): Obstacle[] {
 function generateShops(obstacles: Obstacle[]): Shop[] {
   const shops: Shop[] = [];
   const NUM_SHOPS = 1;
-  const SHOP_SPAWN_MARGIN = 200; // Margin including shop radius
+  const SHOP_SPAWN_MARGIN = 200;
   
   for (let i = 0; i < NUM_SHOPS; i++) {
     let validLocation = false;
@@ -255,7 +246,6 @@ function generateShops(obstacles: Obstacle[]): Shop[] {
       shopX = Math.random() * (ARENA_WIDTH - SHOP_SPAWN_MARGIN * 2) + SHOP_SPAWN_MARGIN;
       shopY = Math.random() * (ARENA_HEIGHT - SHOP_SPAWN_MARGIN * 2) + SHOP_SPAWN_MARGIN;
       
-      // Check if far enough from obstacles
       let tooCloseToObstacle = false;
       for (const obstacle of obstacles) {
         const dx = shopX - (obstacle.x + obstacle.width / 2);
@@ -292,12 +282,10 @@ function getActiveBuff(player: Player, buffType: string): boolean {
 }
 
 function checkCollision(x: number, y: number, size: number, obstacles: Obstacle[]): boolean {
-  // Check arena bounds
   if (x - size / 2 < 0 || x + size / 2 > ARENA_WIDTH ||
     y - size / 2 < 0 || y + size / 2 > ARENA_HEIGHT) {
     return true;
   }
-  // Check obstacles
   for (const obstacle of obstacles) {
     if (!(x + size / 2 < obstacle.x || x - size / 2 > obstacle.x + obstacle.width ||
       y + size / 2 < obstacle.y || y - size / 2 > obstacle.y + obstacle.height)) {
@@ -310,10 +298,9 @@ function checkCollision(x: number, y: number, size: number, obstacles: Obstacle[
 function findValidSpawnLocation(obstacles: Obstacle[]): { x: number; y: number } {
   let attempts = 0;
   const maxAttempts = 200;
-  const SPAWN_MARGIN = 50; // Keep spawn away from edges and obstacles
+  const SPAWN_MARGIN = 50;
   
   while (attempts < maxAttempts) {
-    // Spawn within safe margins
     const x = Math.random() * (ARENA_WIDTH - SPAWN_MARGIN * 2) + SPAWN_MARGIN;
     const y = Math.random() * (ARENA_HEIGHT - SPAWN_MARGIN * 2) + SPAWN_MARGIN;
     
@@ -323,7 +310,6 @@ function findValidSpawnLocation(obstacles: Obstacle[]): { x: number; y: number }
     attempts++;
   }
   
-  // Fallback to center (should rarely be needed)
   return { x: ARENA_WIDTH / 2, y: ARENA_HEIGHT / 2 };
 }
 
@@ -341,14 +327,12 @@ function updateLeaderboard(): void {
   gameState.leaderboard = leaderboard;
 }
 
-// Game loop - handles all active games
 let lastUpdateTime = Date.now();
 setInterval(() => {
   const now = Date.now();
   const deltaTime = (now - lastUpdateTime) / 1000;
   lastUpdateTime = now;
 
-  // Clean up empty games
   for (const [gameId, game] of games) {
     if (game.players.size === 0) {
       console.log(`🗑️ Deleting empty game: ${gameId}`);
@@ -357,24 +341,20 @@ setInterval(() => {
     }
   }
 
-  // Update each game
   for (const [gameId, game] of games) {
-    // Check if match has ended
     const elapsedTime = now - game.gameStartTime;
     if (elapsedTime > MATCH_DURATION && !game.matchEnded) {
       game.matchEnded = true;
-      // Find winner
       const winner = Array.from(game.players.values()).reduce((a, b) => 
         a.kills > b.kills ? a : b
       );
       const nextGameId = generateGameId();
       
-      // Prepare match data for database
       const playerResults = Array.from(game.players.values()).map(player => ({
         userId: player.userId || player.id,
         username: player.name,
         kills: player.kills,
-        coinsEarned: player.coins - 50, // Coins earned this match (started with 50)
+        coinsEarned: player.coins - 50,
       }));
       
       // Emit ONLY to players in this game
@@ -389,20 +369,16 @@ setInterval(() => {
         },
       });
       
-      // Schedule new game after 30 seconds
       if (game.postMatchTimeout) clearTimeout(game.postMatchTimeout);
       game.postMatchTimeout = setTimeout(() => {
         console.log(`🎮 Auto-restarting game: ${gameId}`);
-        // Remove old game and create new one
         games.delete(gameId);
         const newGame = createNewGame(nextGameId);
         games.set(nextGameId, newGame);
-        // Emit ONLY to players in the old game
         io.to(`game-${gameId}`).emit("gameReady", { gameId: nextGameId });
       }, POST_MATCH_DELAY);
     }
 
-    // Check if map needs to change
     if (now - game.lastMapChangeTime > MAP_CHANGE_INTERVAL) {
       console.log(`🗺️ MAP CHANGED in game ${gameId}`);
       game.obstacles = generateArenaObstacles();
@@ -411,7 +387,6 @@ setInterval(() => {
       io.emit("mapChanged", { obstacles: game.obstacles });
     }
 
-    // Update players in this game
     for (const player of game.players.values()) {
       if (!player.isAlive) {
         player.respawnTimer -= deltaTime * 1000;
@@ -420,7 +395,6 @@ setInterval(() => {
           player.health = MAX_HEALTH;
           player.mana = MAX_MANA;
           
-          // Find a valid spawn location
           const spawnLocation = findValidSpawnLocation(game.obstacles);
           player.x = spawnLocation.x;
           player.y = spawnLocation.y;
@@ -430,8 +404,7 @@ setInterval(() => {
         continue;
       }
 
-      // Direct, responsive movement (no sliding acceleration)
-      let MAX_SPEED = 450; // pixels per second
+      let MAX_SPEED = 450;
       if (getActiveBuff(player, 'speed')) {
         MAX_SPEED *= 1.5;
       }
@@ -546,7 +519,6 @@ setInterval(() => {
       game.projectiles.delete(id);
     }
 
-    // Clean up expired buffs and coin drops
     for (const player of game.players.values()) {
       if (player.isAlive) {
         player.buffs = player.buffs.filter(b => b.expiresAt > now);
@@ -570,7 +542,6 @@ setInterval(() => {
       }
     }
 
-    // Update leaderboard for this game
     const leaderboard = Array.from(game.players.values())
       .map(p => {
         const activeBuff = p.buffs.find(b => b.expiresAt > now);
@@ -587,12 +558,10 @@ setInterval(() => {
       .slice(0, 10);
     game.leaderboard = leaderboard;
 
-    // Calculate times
     const matchElapsedTime = now - game.gameStartTime;
     const timeUntilMapChange = MAP_CHANGE_INTERVAL - (now - game.lastMapChangeTime);
     const timeUntilMatchEnd = MATCH_DURATION - matchElapsedTime;
 
-    // Broadcast game state to this game
     const state = {
       players: Array.from(game.players.values()).map(p => ({
         id: p.id,
@@ -617,11 +586,9 @@ setInterval(() => {
       timeUntilMatchEnd: Math.max(0, timeUntilMatchEnd),
     };
 
-    io.emit("gameState", state);
+    io.to(`game-${gameId}`).emit("gameState", state);
   }
-}, 1000 / 60); // 60 FPS
-
-// Socket.IO event handlers
+}, 1000 / 60);
 io.on("connection", (socket: Socket) => {
   console.log(`New player connected: ${socket.id}`);
 
@@ -630,17 +597,14 @@ io.on("connection", (socket: Socket) => {
     const username = data.username || generateRandomName();
     const userId = data.userId;
     
-    // Get or create game
     let game = games.get(requestedGameId!);
     
     if (!game) {
-      // Game doesn't exist, create it
       game = createNewGame(requestedGameId!);
       games.set(requestedGameId!, game);
       console.log(`🎮 Created new game: ${requestedGameId}`);
     }
     
-    // Check if game is full (4 player limit) or match has ended
     if (game.players.size >= 4 || game.matchEnded) {
       callback({ 
         success: false, 
@@ -650,7 +614,6 @@ io.on("connection", (socket: Socket) => {
       return;
     }
     
-    // Create player
     const player: Player = {
       id: socket.id,
       userId: userId,
@@ -669,12 +632,23 @@ io.on("connection", (socket: Socket) => {
       moveForward: false,
       moveBackward: false,
       moveAngle: 0,
-      coins: 50, // Default, will be updated from DB
+      coins: 50,
       buffs: [],
       lastShotAt: 0,
     };
 
-    // Load coins from database if userId provided
+    const spawnLocation = findValidSpawnLocation(game.obstacles);
+    player.x = spawnLocation.x;
+    player.y = spawnLocation.y;
+
+    game.players.set(socket.id, player);
+    
+    (socket.data as any).gameId = requestedGameId;
+    
+    socket.join(`game-${requestedGameId}`);
+
+    console.log(`👤 Player ${username} added to game ${requestedGameId}, players: ${game.players.size}`);
+
     if (userId) {
       try {
         const { data: statsData, error } = await supabase
@@ -689,24 +663,9 @@ io.on("connection", (socket: Socket) => {
         }
       } catch (err) {
         console.error('Error loading coins:', err);
-        // Keep default 50 coins if DB query fails
       }
     }
 
-    // Find a valid spawn location
-    const spawnLocation = findValidSpawnLocation(game.obstacles);
-    player.x = spawnLocation.x;
-    player.y = spawnLocation.y;
-
-    game.players.set(socket.id, player);
-    
-    // Store game reference on socket for later use
-    (socket.data as any).gameId = requestedGameId;
-    
-    // Join socket to a game-specific room
-    socket.join(`game-${requestedGameId}`);
-
-    // Send arena data to new player
     socket.emit("arenaData", {
       width: 2400,
       height: 1600,
@@ -728,7 +687,6 @@ io.on("connection", (socket: Socket) => {
   });
 
   socket.on("findRandomGame", (callback) => {
-    // Find a game with less than 4 players
     let targetGame: GameState | null = null;
     let targetGameId: string | null = null;
     
@@ -740,7 +698,6 @@ io.on("connection", (socket: Socket) => {
       }
     }
     
-    // If no game found, create new one
     if (!targetGame || !targetGameId) {
       targetGameId = generateGameId();
       targetGame = createNewGame(targetGameId);
@@ -773,7 +730,7 @@ io.on("connection", (socket: Socket) => {
     if (player && player.isAlive && player.mana >= MANA_COST_PER_SHOT) {
       const now = Date.now();
       if (player.lastShotAt && now - player.lastShotAt < FIRE_COOLDOWN) {
-        return; // enforce fire rate
+        return;
       }
       player.lastShotAt = now;
 
@@ -781,7 +738,7 @@ io.on("connection", (socket: Socket) => {
 
       let damage = player.damage;
       if (getActiveBuff(player, 'power')) {
-        damage *= 2; // Power buff multiplier
+        damage *= 2;
       }
 
       const projectile: Projectile = {
